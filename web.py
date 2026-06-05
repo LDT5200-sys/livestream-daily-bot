@@ -506,9 +506,62 @@ def settings():
 
 
 if __name__ == "__main__":
+    import socket
+    import subprocess
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=5001)
     a = ap.parse_args()
+
+    # 端口冲突检测
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    result = sock.connect_ex(("127.0.0.1", a.port))
+    sock.close()
+    if result == 0:
+        # 端口已被占用，查出是谁
+        try:
+            out = subprocess.check_output(
+                ["lsof", "-i", f":{a.port}", "-P", "-n"],
+                stderr=subprocess.STDOUT, timeout=5
+            ).decode()
+            lines = out.strip().split("\n")
+            if len(lines) > 1:
+                parts = lines[1].split()
+                proc_name = parts[0] if parts else "未知"
+                pid = parts[1] if len(parts) > 1 else "?"
+                # 尝试找进程的工作目录
+                try:
+                    cwd = subprocess.check_output(
+                        ["lsof", "-p", pid, "-Fn"], stderr=subprocess.DEVNULL, timeout=3
+                    ).decode()
+                    for line in cwd.split("\n"):
+                        if line.startswith("n") and "/" in line:
+                            # 找项目名
+                            path = line[1:]
+                            if "/" in path:
+                                parts_dir = path.split("/")
+                                for i, p in enumerate(parts_dir):
+                                    if p and p not in ("", "Users", "tiexue", "Desktop"):
+                                        project = p
+                                        break
+                                else:
+                                    project = path.split("/")[-2] if len(path.split("/")) > 1 else path
+                                break
+                    else:
+                        project = "未知项目"
+                except Exception:
+                    project = "未知项目"
+
+                print(f"\n⚠️  端口 {a.port} 已被占用！")
+                print(f"   占用进程：{proc_name}（PID {pid}）")
+                print(f"   项目目录：~/{project}/")
+                print(f"\n   解决方法：")
+                print(f"   1. 停掉那个项目，再启动本服务")
+                print(f"   2. 或者换端口：python web.py --port {a.port + 1}")
+                print()
+        except Exception:
+            print(f"\n⚠️  端口 {a.port} 已被其他服务占用，请换端口：python web.py --port {a.port + 1}\n")
+
     print(f"控制台已启动： http://{a.host}:{a.port}")
     app.run(host=a.host, port=a.port, debug=False)
