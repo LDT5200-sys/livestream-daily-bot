@@ -1,0 +1,105 @@
+
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>直播日报控制台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#15120f;--panel:#1f1b17;--panel2:#272019;--line:#3a3127;--ink:#ece5db;--dim:#9c8f7e;--amber:#f5a623;--amber2:#ff8a3d;--ok:#5fb87a;--bad:#e1604f;}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 80% -10%,#2a2017 0,var(--bg) 55%);color:var(--ink);font-family:"Noto Sans SC",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:880px;margin:0 auto;padding:0 22px 64px}
+header{display:flex;align-items:center;justify-content:space-between;padding:26px 0 20px;border-bottom:1px solid var(--line)}
+.brand{font-family:"Noto Serif SC",serif;font-weight:700;font-size:22px;letter-spacing:.5px}
+.brand b{color:var(--amber)}
+nav a{color:var(--dim);text-decoration:none;margin-left:18px;font-size:14px;padding-bottom:4px;border-bottom:2px solid transparent}
+nav a.on{color:var(--ink);border-color:var(--amber)}
+.badge{display:inline-block;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line)}
+.badge.live{color:var(--ok);border-color:#2f5d3f;background:#15241a}
+.badge.demo{color:var(--amber);border-color:#5d4a23;background:#241d12}
+.bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0}
+input[type=date]{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:9px 12px;font-size:15px;font-family:inherit}
+button{cursor:pointer;border:none;border-radius:10px;padding:10px 18px;font-size:15px;font-family:inherit;font-weight:500}
+.btn{background:#2a231b;color:var(--ink);border:1px solid var(--line)}
+.btn:hover{border-color:var(--amber)}
+.btn.primary{background:linear-gradient(120deg,var(--amber),var(--amber2));color:#241a08;border:none}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.5;cursor:wait}
+.status{font-size:14px;color:var(--dim);min-height:20px;margin-left:4px}
+.status.ok{color:var(--ok)} .status.err{color:var(--bad)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 26px 20px;margin-top:6px;box-shadow:0 18px 40px -28px #000}
+.card h2{font-family:"Noto Serif SC",serif;font-size:19px;margin:22px 0 6px}
+.card h3{font-size:14px;color:var(--amber);margin:16px 0 4px;font-weight:500}
+.card p{margin:6px 0}
+.card ul{margin:6px 0 6px;padding-left:20px}
+.card li{margin:3px 0}
+.card blockquote{margin:16px 0 0;padding:8px 14px;border-left:3px solid var(--line);color:var(--dim);font-size:13px}
+.card strong{color:#fff}
+.empty{color:var(--dim);padding:40px 0;text-align:center}
+textarea{width:100%;min-height:420px;background:#100d0a;color:#d8cdbd;border:1px solid var(--line);border-radius:12px;padding:16px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.7}
+.hint{color:var(--dim);font-size:13px;margin:10px 0}
+.targets{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.tg{font-size:12px;padding:4px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+</style></head><body><div class="wrap">
+<header>
+  <div class="brand">直播运营 · <b>日报台</b></div>
+  <nav><a class="on" href="/">控制台</a><a class="" href="/settings">设置</a></nav>
+</header>
+
+    <div style="margin-top:18px"><span class="badge demo">演示模式 · 未配飞书，用示例数据</span></div>
+    <div class="bar">
+      <input type="date" value="2026-06-04">
+      <button class="btn">预览日报</button>
+      <button class="btn primary">推送到钉钉</button>
+      <span class="status ok">已生成 2026-06-04（示例数据）</span>
+    </div>
+    <div class="targets"><span class="tg">📣 dingtalk · 加签</span><span class="tg">📣 dingtalk_2</span></div>
+    <div class="card"><h2>📊 秘纤 直播日报 | 2026-06-04（周四）</h2>
+<p><strong>一、整体概览</strong></p>
+<ul>
+<li>场次：3 场有数据 / 共 5 排班</li>
+<li>全天 GMV：<strong>¥224,457</strong></li>
+<li>平均 ROI：<strong>7.82</strong></li>
+<li>最佳场次：<strong>D班·赵颢棋（邓安祺）</strong>，GMV ¥80,882</li>
+</ul>
+<p><strong>二、关键事件 &amp; 节点</strong></p>
+<p><em>🔧 系数调整</em></p>
+<ul>
+<li>C班·张新（张佳林）：第二小时调整到7.2</li>
+<li>D班·赵颢棋（邓安祺）：第一小时调整到7.5</li>
+</ul>
+<p><em>🎬 素材动作</em></p>
+<ul>
+<li>B班·苑含笑（贾明芳,张佳林）：主力素材有变，老主力素材跑量，12点后近20分钟未出单</li>
+<li>C班·张新（张佳林）：下掉南方素材</li>
+<li>D班·赵颢棋（邓安祺）：添加南方素材</li>
+</ul>
+<p><em>📈 投放/成本</em></p>
+<ul>
+<li>A班·朱佳琪（贾明芳）：控成本测试；新素材有信号 ID:7641183857892114474 / 7641920463995781171</li>
+<li>B班·苑含笑（贾明芳,张佳林）：控成本测试，多条素材产生信号，其中1条跑到前TOP2 ID:7642379488681721883</li>
+<li>C班·张新（张佳林）：控成本测试</li>
+<li>D班·赵颢棋（邓安祺）：控成本测试</li>
+<li>E班·范晓晶（邓安祺）：控成本测试</li>
+</ul>
+<p><em>⏫ 加量/控量</em></p>
+<ul>
+<li>A班·朱佳琪（贾明芳）：开播后流速低加量空耗，提前暂停</li>
+<li>B班·苑含笑（贾明芳,张佳林）：未加量，系统持续起量</li>
+</ul>
+<p><em>📝 复盘要点</em></p>
+<ul>
+<li>A班·朱佳琪（贾明芳）：早班第一小时需注重塑品互动；逼单需增加点对点；半点未及时截单；讲完卖点未改公屏；节奏整体偏慢</li>
+</ul>
+<p><strong>三、各场次明细</strong></p>
+<ul>
+<li><strong>A班 06-10</strong> 朱佳琪（贾明芳）　数据未录入</li>
+<li><strong>B班 10-14</strong> 苑含笑（贾明芳,张佳林）　GMV ¥75,221 / ROI 7.57 / 转化 86.93%</li>
+<li><strong>C班 14-18</strong> 张新（张佳林）　GMV ¥68,354 / ROI 7.92 / 转化 84.77%</li>
+<li><strong>D班 18-22</strong> 赵颢棋（邓安祺）　GMV ¥80,882 / ROI 7.96 / 转化 92.98%</li>
+<li><strong>E班 22-02</strong> 范晓晶（邓安祺）　数据未录入</li>
+</ul>
+<blockquote>自动播报 · 2026-06-05 08:12 生成</blockquote></div>
+    <p style="color:#9c8f7e;font-size:13px;margin-top:18px">↑ 这是静态预览快照。真实使用时运行 <code>python web.py</code>，按钮即可联动飞书/钉钉。</p>
+
+</div></body></html>

@@ -1,0 +1,43 @@
+# ============================================================
+# 唯一需要你维护的"入口"文件。换机器人 / 换群 / 改密钥都只改这里。
+# 改完直接生效，不用动任何 .py 代码。
+# 使用前复制为 settings.ini： cp settings.ini.example settings.ini
+# ============================================================
+
+[feishu]
+app_id          = cli_xxxxxxxxxxxx
+app_secret      = xxxxxxxxxxxxxxxx
+# wiki 链接 /wiki/ 后面那一串（有 app_token 时留空即可）
+wiki_node_token =
+# 多维表 base 链接里 /base/ 后面那段
+app_token       =
+# 同一张多维表里的两个数据表（地址栏 ?table=tblXXXX 那段）
+follow_table_id = tblXXXXXXXX_follow
+data_table_id   = tblXXXXXXXX_data
+
+# ---------- 钉钉机器人（换群/换密钥就改这一段）----------
+[dingtalk]
+webhook    = https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxx
+secret     = SECxxxxxxxx
+at_mobiles =
+at_all     = false
+enabled    = true
+
+# 想同时播到多个群？复制成 dingtalk_2 / dingtalk_3 …
+# [dingtalk_2]
+# webhook    = https://oapi.dingtalk.com/robot/send?access_token=另一个群的token
+# secret     = SEC另一个群的密钥
+# at_mobiles =
+# at_all     = false
+# enabled    = true
+
+[general]
+timezone     = Asia/Shanghai
+report_title = 直播日报
+brand_name   = 秘纤
+
+# ---------- AI 智能总结（DeepSeek，可选）----------
+[ai]
+api_key =
+model   = deepseek-chat
+enabled = false
