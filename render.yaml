@@ -3,4 +3,4 @@ services:
     name: livestream-daily-bot
     env: python
     buildCommand: pip install -r requirements.txt && cp settings.ini.example settings.ini
-    startCommand: python web.py --host 0.0.0.0 --port $PORT
+    startCommand: gunicorn web:app --bind 0.0.0.0:$PORT
