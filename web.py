@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Web 控制台：浏览器里预览日报/周报、趋势图、运营/主播汇总、告警区、一键推送、在线改设置。
+Web 控制台：月历视图 + 日报详情 + 表单配置 + 钉钉推送。
 运行：
     python web.py                      # 默认 http://127.0.0.1:5001
     python web.py --host 0.0.0.0 --port 8080
@@ -14,7 +14,7 @@ from datetime import datetime, timezone, timedelta
 from flask import Flask, request, jsonify
 
 import config
-from report import build_report, build_weekly_report, compute_weekly_analytics
+from report import build_report, build_weekly_report, build_monthly_calendar
 from dingtalk import send_markdown
 from demo import sample_rows
 
@@ -67,6 +67,9 @@ def render_md(text):
             out.append(f"<h3>{inline(line[4:])}</h3>")
         elif line.startswith("> "):
             out.append(f"<blockquote>{inline(line[2:])}</blockquote>")
+        elif line.startswith("|"):
+            # markdown table detection
+            out.append(f"<p class=\"tbl-row\">{inline(line)}</p>")
         else:
             out.append(f"<p>{inline(line)}</p>")
     if in_list:
@@ -74,7 +77,7 @@ def render_md(text):
     return "\n".join(out)
 
 
-# ---------------- 页面框架 (CSS + HTML shell) ----------------
+# ---------------- 页面框架 ----------------
 BASE = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>直播日报控制台</title>
@@ -101,8 +104,7 @@ button{cursor:pointer;border:none;border-radius:10px;padding:10px 18px;font-size
 .btn:hover{border-color:var(--amber)}
 .btn.primary{background:linear-gradient(120deg,var(--amber),var(--amber2));color:#241a08;border:none}
 .btn.primary:hover{filter:brightness(1.06)}
-.btn:disabled{opacity:.5;cursor:wait}
-.status{font-size:14px;color:var(--dim);min-height:20px;margin-left:4px}
+.status{font-size:14px;color:var(--dim);min-height:20px;margin-left:8px}
 .status.ok{color:var(--ok)} .status.err{color:var(--bad)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 26px 20px;margin-top:20px;box-shadow:0 18px 40px -28px #000}
 .card h2{font-family:"Noto Serif SC",serif;font-size:19px;margin:22px 0 6px}
@@ -113,62 +115,32 @@ button{cursor:pointer;border:none;border-radius:10px;padding:10px 18px;font-size
 .card blockquote{margin:16px 0 0;padding:8px 14px;border-left:3px solid var(--line);color:var(--dim);font-size:13px}
 .card strong{color:#fff}
 .empty{color:var(--dim);padding:40px 0;text-align:center}
-
-/* ---- 告警区 ---- */
-.alert-card{background:var(--redbg);border:1px solid var(--redline);border-radius:16px;padding:12px 26px 16px;margin-top:20px;box-shadow:0 12px 32px -20px rgba(192,57,43,0.2)}
-.alert-card h2{color:var(--bad);font-family:"Noto Serif SC",serif;font-size:17px;margin:10px 0 8px}
-.alert-card .alert-item{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(90,32,32,0.5)}
-.alert-card .alert-item:last-child{border-bottom:none}
-.alert-card .alert-tag{flex-shrink:0;font-size:11px;padding:2px 8px;border-radius:6px;font-weight:500}
-.alert-card .alert-tag.abnormal{background:var(--bad);color:#fff}
-.alert-card .alert-tag.status{background:#7b3f1a;color:#f0b27a}
-.alert-card .alert-date{color:var(--dim);font-size:12px;white-space:nowrap}
-.alert-card .alert-text{color:#f5cdcd;font-size:14px;line-height:1.5}
-
-/* ---- 趋势图 ---- */
-.chart-wrap{margin-top:16px}
-.chart-bars{display:flex;gap:8px;align-items:flex-end;min-height:180px;padding-bottom:6px}
-.chart-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
-.chart-bar{width:100%;max-width:80px;background:linear-gradient(180deg,var(--amber2),var(--amber));border-radius:8px 8px 4px 4px;min-height:4px;transition:height .4s ease}
-.chart-bar.zero{background:var(--line)}
-.chart-roi{font-size:12px;color:var(--dim);font-weight:500}
-.chart-roi.high{color:var(--ok)}
-.chart-label{font-size:12px;color:var(--dim);text-align:center;line-height:1.3}
-.chart-label .wd{font-size:11px;opacity:.7}
-.chart-label .dt{font-size:10px;opacity:.5}
-.chart-gmv{font-size:11px;color:var(--amber);font-weight:500}
-
-/* ---- 汇总表 ---- */
-.summary-section{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
-.summary-tbl{width:100%;border-collapse:collapse;font-size:13px}
-.summary-tbl th{text-align:left;color:var(--dim);font-weight:500;padding:6px 10px;border-bottom:1px solid var(--line);font-size:12px}
-.summary-tbl th.right{text-align:right}
-.summary-tbl td{padding:7px 10px;border-bottom:1px solid rgba(58,49,39,0.5)}
-.summary-tbl td.right{text-align:right;font-variant-numeric:tabular-nums}
-.summary-tbl .rank{color:var(--dim);font-size:11px;width:24px}
-.summary-tbl .highlight{color:var(--amber);font-weight:600}
-.summary-tbl .muted{color:var(--dim)}
-@media(max-width:700px){.summary-section{grid-template-columns:1fr}}
-
-/* ---- 日历 ---- */
-.day-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center}
-.day-card.today{border-color:var(--amber);box-shadow:0 0 12px -4px rgba(245,166,35,0.15)}
-.day-card.has-alert{background:rgba(192,57,43,0.1);border-color:rgba(192,57,43,0.3)}
-.day-card .day-date{font-size:11px;color:var(--dim)}
-.day-card .day-wd{font-size:12px;font-weight:500;margin:2px 0}
-.day-card .day-gmv{font-size:15px;font-weight:700;margin:4px 0;font-variant-numeric:tabular-nums}
-.day-card .day-gmv.muted{color:var(--dim);font-weight:400;font-size:13px}
-.day-card .day-roi{font-size:11px;color:var(--ok)}
-.day-card .day-note{font-size:10px;color:var(--dim);margin-top:4px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.day-card .day-alert{display:inline-block;font-size:9px;padding:1px 5px;border-radius:4px;background:var(--bad);color:#fff;margin-top:3px}
-
-/* ---- 随页面隐藏/显示 ---- */
-.week-only,.day-only{display:none}
-
 textarea{width:100%;min-height:420px;background:#100d0a;color:#d8cdbd;border:1px solid var(--line);border-radius:12px;padding:16px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.7}
 .hint{color:var(--dim);font-size:13px;margin:10px 0}
 .targets{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .tg{font-size:12px;padding:4px 10px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+
+/* ---- 月历 ---- */
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-header{text-align:center;font-size:12px;color:var(--dim);padding:6px 0;font-weight:500}
+.cal-cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 6px;min-height:78px;cursor:pointer;transition:border .15s;display:flex;flex-direction:column;gap:2px}
+.cal-cell:hover{border-color:var(--amber)}
+.cal-cell.today{border-color:var(--amber);box-shadow:0 0 10px -2px rgba(245,166,35,0.18)}
+.cal-cell.alert{border-color:rgba(192,57,43,0.5);background:rgba(192,57,43,0.08)}
+.cal-cell.active{border-color:var(--amber2);background:var(--panel)}
+.cal-cell.placeholder{background:transparent;border-color:transparent;cursor:default;min-height:0}
+.cal-cell .cal-num{font-size:13px;font-weight:600;line-height:1}
+.cal-cell .cal-gmv{font-size:12px;font-weight:700;color:var(--amber)}
+.cal-cell .cal-gmv.zero{color:var(--dim);font-weight:400}
+.cal-cell .cal-tags{font-size:10px;letter-spacing:1px}
+.cal-cell .cal-note{font-size:9px;color:var(--dim);line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.month-bar{display:flex;gap:10px;align-items:center;font-size:18px;font-weight:700;font-family:"Noto Serif SC",serif}
+.month-bar button{background:none;border:1px solid var(--line);color:var(--ink);cursor:pointer;border-radius:8px;padding:4px 10px;font-size:14px}
+.month-bar button:hover{border-color:var(--amber);color:var(--amber)}
+.detail-panel{display:none;margin-top:20px}
+
+/* ---- 日报内容（table等）---- */
+.tbl-row{font-family:ui-monospace,monospace;font-size:12px;color:var(--dim);margin:2px 0}
 </style></head><body><div class="wrap">
 <header>
   <div class="brand">直播运营 · <b>日报台</b></div>
@@ -179,7 +151,7 @@ __BODY__
 
 
 def page(active, body):
-    nav = (f'<a class="{"on" if active=="home" else ""}" href="/">控制台</a>'
+    nav = (f'<a class="{"on" if active=="home" else ""}" href="/">月历</a>'
            f'<a class="{"on" if active=="config" else ""}" href="/config">配置</a>'
            f'<a class="{"on" if active=="settings" else ""}" href="/settings">高级</a>')
     return BASE.replace("__NAV__", nav).replace("__BODY__", body)
@@ -192,158 +164,118 @@ def home():
     badge = ('<span class="badge live">实盘 · 已连飞书</span>' if mode == "live"
              else '<span class="badge demo">演示模式 · 未配飞书，用示例数据</span>')
     tgs = "".join(f'<span class="tg">📣 {t["name"]}{" · 加签" if t["secret"] else ""}</span>'
-                  for t in config.DINGTALK_TARGETS) or '<span class="tg">未配置钉钉机器人，去「设置」填</span>'
+                  for t in config.DINGTALK_TARGETS) or '<span class="tg">未配置钉钉机器人，去「配置」填</span>'
+    now = datetime.now(timezone(timedelta(hours=8)))
     body = f"""
     <div style="margin-top:18px">{badge}</div>
-    <div class="bar">
-      <input type="date" id="d" value="{today_str()}">
-      <select id="mode" class="btn">
-        <option value="day">单日</option>
-        <option value="week" selected>周报</option>
-      </select>
-      <button class="btn" onclick="preview()">预览</button>
-      <button class="btn primary" onclick="push()">推送到钉钉</button>
+    <div class="targets" style="margin-bottom:16px">{tgs}</div>
+
+    <!-- 月份导航 -->
+    <div class="month-bar" style="margin:18px 0 14px">
+      <button onclick="prevMonth()">‹</button>
+      <span id="monthLabel">{now.year}年{now.month}月</span>
+      <button onclick="nextMonth()">›</button>
+      <button class="btn primary" style="margin-left:auto;font-size:13px" onclick="pushDay()">📤 推送钉钉</button>
       <span id="st" class="status"></span>
     </div>
-    <div class="targets">{tgs}</div>
 
-    <!-- 告警区 -->
-    <div id="alerts" class="alert-card" style="display:none">
-      <h2>🚨 异常 & 主播状态告警</h2>
-      <div id="alert-list"></div>
+    <!-- 月历 -->
+    <div class="card" style="padding:10px 14px 14px">
+      <div id="calHeaders" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px"></div>
+      <div id="calendar" class="calendar"></div>
     </div>
 
-    <!-- 趋势图 + 日历 + 汇总表 -->
-    <div id="analytics" style="display:none">
-      <!-- 日历周视图 -->
-      <div class="card" style="padding-bottom:12px">
-        <h2 style="margin-bottom:12px">📅 本周日历</h2>
-        <div id="calendar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px"></div>
-      </div>
-      <div class="card" style="padding-bottom:16px">
-        <h2 style="margin-bottom:2px">📈 GMV / ROI 趋势</h2>
-        <div class="chart-wrap">
-          <div id="chart" class="chart-bars"></div>
-        </div>
-      </div>
-      <div class="summary-section" id="summary"></div>
-    </div>
-
-    <!-- 日报/周报卡片 -->
-    <div id="card" class="card"><div class="empty">点「预览」生成当日内容</div></div>
+    <!-- 日报详情 -->
+    <div id="detail" class="card detail-panel"></div>
 
     <script>
-    const st=document.getElementById('st'), card=document.getElementById('card');
-    const alertsDiv=document.getElementById('alerts'), analyticsDiv=document.getElementById('analytics');
-    const alertList=document.getElementById('alert-list'), chartDiv=document.getElementById('chart');
-    const summaryDiv=document.getElementById('summary'), modeSel=document.getElementById('mode');
+    var st=document.getElementById('st'),calDiv=document.getElementById('calendar');
+    var calHdr=document.getElementById('calHeaders'),ml=document.getElementById('monthLabel');
+    var detail=document.getElementById('detail');
+    var curYear={now.year},curMonth={now.month};
+    var today='{today_str()}';
+    var selDate=null;
+    var WK=['一','二','三','四','五','六','日'];
 
     function setSt(m,c){{st.className='status '+(c||'');st.textContent=m;}}
-
     function fmt(n){{return (n||0).toLocaleString('en-US',{{maximumFractionDigits:0}});}}
-    function fmtRoi(r){{return r!=null ? r.toFixed(2) : '-';}}
 
-    // ---- 告警 ----
-    function renderAlerts(alerts){{
-      if(!alerts||!alerts.length){{alertsDiv.style.display='none';return;}}
-      alertsDiv.style.display='block';
-      alertList.innerHTML=alerts.map(a=>'<div class="alert-item">'
-        +'<span class="alert-tag '+(a.type==='异常'?'abnormal':'status')+'">'+(a.type==='异常'?'⚠ 异常':'🎤 主播')+'</span>'
-        +'<span class="alert-date">'+a.date+'</span>'
-        +'<div class="alert-text">'+a.text.replace(/</g,'&lt;')+'</div>'
-        +'</div>').join('');
-    }}
+    calHdr.innerHTML=WK.map(function(w){{return '<div class="cal-header">'+w+'</div>';}}).join('');
 
-    // ---- 趋势图 ----
-    // ---- 日历 ----
-    function renderCalendar(trends){{
-      var today='{today_str()}';
-      var calDiv=document.getElementById('calendar');
-      calDiv.innerHTML=trends.map(function(t){{
-        var isToday=t.date==today;
-        var hasAlert=false;
-        var classes=['day-card'];
-        if(isToday) classes.push('today');
-        if(hasAlert) classes.push('has-alert');
-        var gmvCls=t.gmv>0?'day-gmv':'day-gmv muted';
-        var gmvTxt=t.gmv>0?'¥'+fmt(t.gmv).substring(0,7):'—';
-        var roiTxt=t.roi!=null?'ROI '+t.roi.toFixed(2):'';
-        return '<div class="'+classes.join(' ')+'">'
-          +'<div class="day-wd">'+t.weekday+'</div>'
-          +'<div class="day-date">'+t.date.substring(5)+'</div>'
-          +'<div class="'+gmvCls+'">'+gmvTxt+'</div>'
-          +(roiTxt?'<div class="day-roi">'+roiTxt+'</div>':'')
-          +'</div>';
-      }}).join('');
-    }}
-
-    function renderChart(trends){{
-      var maxGmv=Math.max.apply(null,trends.map(function(t){{return t.gmv;}}))||1;
-      chartDiv.innerHTML=trends.map(function(t){{
-        var h=t.gmv>0?Math.max(8,(t.gmv/maxGmv)*100):4;
-        var barClass=t.gmv>0?'chart-bar':'chart-bar zero';
-        var roiClass=t.roi!=null&&t.roi>=8?'chart-roi high':'chart-roi';
-        return '<div class="chart-col">'
-          +'<div class="chart-gmv">'+(t.gmv>0?'¥'+fmt(t.gmv).substring(0,6)+'k':'')+'</div>'
-          +'<div class="'+roiClass+'">'+(t.roi!=null?fmtRoi(t.roi):'')+'</div>'
-          +'<div class="'+barClass+'" style="height:'+h+'%"></div>'
-          +'<div class="chart-label"><span class="wd">'+t.weekday+'</span><br><span class="dt">'+t.date.substring(5)+'</span></div>'
-          +'</div>';
-      }}).join('');
-    }}
-
-    // ---- 汇总表 ----
-    function renderSummary(op,an){{
-      var opRows=op.map(function(o,i){{return '<tr><td class="rank">'+(i+1)+'</td><td>'+o.name+'</td><td class="right highlight">¥'+fmt(o.gmv)+'</td><td class="right muted">'+o.slots+'场</td><td class="right muted">ROI '+fmtRoi(o.avg_roi)+'</td></tr>';}}).join('');
-      var anRows=an.map(function(a,i){{return '<tr><td class="rank">'+(i+1)+'</td><td>'+a.name+'</td><td class="right highlight">¥'+fmt(a.gmv)+'</td><td class="right muted">'+a.slots+'场</td><td class="right muted">ROI '+fmtRoi(a.avg_roi)+'</td></tr>';}}).join('');
-      summaryDiv.innerHTML='<div class="card" style="padding-bottom:16px"><h2 style="margin-bottom:6px">👤 运营排行</h2><table class="summary-tbl"><thead><tr><th></th><th>运营</th><th class="right">GMV 合计</th><th class="right">场次</th><th class="right">平均 ROI</th></tr></thead><tbody>'+opRows+'</tbody></table></div>'
-        +'<div class="card" style="padding-bottom:16px"><h2 style="margin-bottom:6px">🎤 主播排行</h2><table class="summary-tbl"><thead><tr><th></th><th>主播</th><th class="right">GMV 合计</th><th class="right">场次</th><th class="right">平均 ROI</th></tr></thead><tbody>'+anRows+'</tbody></table></div>';
-    }}
-
-    // ---- 主流程 ----
-    async function preview(){{
-      var isWeek=modeSel.value==='week';
-      var d=document.getElementById('d').value;
-      setSt('生成中…');
+    async function loadMonth(){{
+      ml.textContent=curYear+'年'+curMonth+'月';
       try{{
-        var w=isWeek?'&week=1':'';
-        var r=await fetch('/api/report?date='+d+w);var j=await r.json();
-        if(!j.ok){{setSt(j.error,'err');return;}}
-        card.innerHTML=j.html;
-        analyticsDiv.style.display=isWeek?'block':'none';
-        alertsDiv.style.display='none';
-        if(isWeek){{
-          var a=await fetch('/api/analytics?date='+d);var aj=await a.json();
-          if(aj.ok){{
-            renderCalendar(aj.trends);
-            renderChart(aj.trends);
-            renderSummary(aj.operator_summary,aj.anchor_summary);
-            renderAlerts(aj.alerts);
-          }}
-        }}
-        setSt('已生成 '+d+(j.demo?'（示例数据）':''),'ok');
-      }}catch(e){{setSt(''+e,'err');}}
-    }}
-
-    async function push(){{
-      var isWeek=modeSel.value==='week';
-      if(!confirm('确认把该'+(isWeek?'周':'日')+'报推送到所有已启用的钉钉群？'))return;
-      setSt('推送中…');
-      try{{
-        var d=document.getElementById('d').value;
-        var r=await fetch('/api/push',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{date:d,week:isWeek}})}});
+        var r=await fetch('/api/calendar?year='+curYear+'&month='+curMonth);
         var j=await r.json();
         if(!j.ok){{setSt(j.error,'err');return;}}
-        setSt('已推送：'+j.results.map(function(x){{return x.name+(x.ok?'✓':'✗');}}).join('  '), 'ok');
+        var cells=[];
+        for(var i=0;i<j.first_weekday;i++) cells.push('<div class="cal-cell placeholder"></div>');
+        j.days.forEach(function(d){{
+          var cls=['cal-cell'];
+          if(d.date==today) cls.push('today');
+          if(d.has_alert) cls.push('alert');
+          if(d.date==selDate) cls.push('active');
+          var gmvCls=d.gmv>0?'cal-gmv':'cal-gmv zero';
+          var gmvTxt=d.gmv>0?'¥'+fmt(d.gmv):'—';
+          var tags=d.tags?d.tags.join(' '):'';
+          var note=d.highlight?d.highlight.substring(0,28):'';
+          cells.push('<div class="'+cls.join(' ')+'" onclick="openDay(\''+d.date+'\')">'
+            +'<div class="cal-num">'+d.day+'</div>'
+            +'<div class="'+gmvCls+'">'+gmvTxt+'</div>'
+            +'<div class="cal-tags">'+tags+'</div>'
+            +'<div class="cal-note">'+note+'</div>'
+            +'</div>');
+        }});
+        calDiv.innerHTML=cells.join('');
       }}catch(e){{setSt(''+e,'err');}}
     }}
 
-    // 模式切换时自动刷新
-    modeSel.onchange=preview;
-    preview();
+    async function openDay(date){{
+      selDate=date;
+      setSt('加载中…');
+      try{{
+        var r=await fetch('/api/report?date='+date);var j=await r.json();
+        if(!j.ok){{setSt(j.error,'err');return;}}
+        detail.style.display='block';
+        detail.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">'+j.title+'</h2><button class="btn" style="font-size:12px" onclick="detail.style.display=\\'none\\';selDate=null;loadMonth()">✕ 关闭</button></div>'+j.html;
+        detail.scrollIntoView({{behavior:'smooth'}});
+        setSt('已加载 '+date,'ok');
+        loadMonth();
+      }}catch(e){{setSt(''+e,'err');}}
+    }}
+
+    async function pushDay(){{
+      var d=selDate||today;
+      if(!confirm('确认把 '+d+' 的日报推送到钉钉？'))return;
+      setSt('推送中…');
+      try{{
+        var r=await fetch('/api/push',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{date:d}})}});
+        var j=await r.json();
+        if(!j.ok){{setSt(j.error,'err');return;}}
+        setSt('已推送', 'ok');
+      }}catch(e){{setSt(''+e,'err');}}
+    }}
+
+    function prevMonth(){{curMonth--;if(curMonth<1){{curYear--;curMonth=12;}}selDate=null;detail.style.display='none';loadMonth();}}
+    function nextMonth(){{curMonth++;if(curMonth>12){{curYear++;curMonth=1;}}selDate=null;detail.style.display='none';loadMonth();}}
+    loadMonth();
     </script>
     """
     return page("home", body)
+
+
+@app.route("/api/calendar")
+def api_calendar():
+    """返回月历数据。"""
+    year = int(request.args.get("year") or datetime.now(timezone(timedelta(hours=8))).year)
+    month = int(request.args.get("month") or datetime.now(timezone(timedelta(hours=8))).month)
+    demo = request.args.get("demo") == "1"
+    try:
+        (follow, data), _ = fetch_rows(today_str(), demo)
+        cal = build_monthly_calendar(year, month, follow, data)
+        return jsonify(ok=True, **cal)
+    except Exception as e:
+        return jsonify(ok=False, error=f"读取失败：{e}")
 
 
 @app.route("/api/report")
@@ -364,21 +296,6 @@ def api_report():
         return jsonify(ok=False, error=f"读取/生成失败：{e}")
 
 
-@app.route("/api/analytics")
-def api_analytics():
-    """返回结构化分析数据：趋势、运营/主播汇总、告警。"""
-    date = request.args.get("date") or today_str()
-    demo = request.args.get("demo") == "1"
-    try:
-        (follow, data), _ = fetch_rows(date, demo)
-        end_date = date
-        start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=6)).strftime("%Y-%m-%d")
-        ana = compute_weekly_analytics(start_date, end_date, follow, data)
-        return jsonify(ok=True, **ana)
-    except Exception as e:
-        return jsonify(ok=False, error=f"分析失败：{e}")
-
-
 @app.route("/api/push", methods=["POST"])
 def api_push():
     body = request.get_json(silent=True) or {}
@@ -386,7 +303,7 @@ def api_push():
     demo = bool(body.get("demo"))
     week = bool(body.get("week"))
     if not config.DINGTALK_TARGETS:
-        return jsonify(ok=False, error="未配置钉钉机器人，请到「设置」填 webhook")
+        return jsonify(ok=False, error="未配置钉钉机器人，请到「配置」填 webhook")
     try:
         (follow, data), _ = fetch_rows(date, demo)
         if week:
@@ -412,41 +329,33 @@ def config_page():
     msg = ""
     if request.method == "POST":
         cfg = configparser.ConfigParser()
-        # 读取现有配置，保留未在表单中出现的段
         if SETTINGS_PATH.exists():
             cfg.read(SETTINGS_PATH, encoding="utf-8")
         for sec in ["feishu", "dingtalk", "ai", "general"]:
             if not cfg.has_section(sec):
                 cfg.add_section(sec)
-        # 飞书
         cfg.set("feishu", "app_id", request.form.get("feishu_app_id", "").strip())
         cfg.set("feishu", "app_secret", request.form.get("feishu_app_secret", "").strip())
         cfg.set("feishu", "app_token", request.form.get("feishu_app_token", "").strip())
         cfg.set("feishu", "wiki_node_token", request.form.get("feishu_wiki_node_token", "").strip())
         cfg.set("feishu", "follow_table_id", request.form.get("feishu_follow_table_id", "").strip())
         cfg.set("feishu", "data_table_id", request.form.get("feishu_data_table_id", "").strip())
-        # 钉钉
         cfg.set("dingtalk", "webhook", request.form.get("dingtalk_webhook", "").strip())
         cfg.set("dingtalk", "secret", request.form.get("dingtalk_secret", "").strip())
         cfg.set("dingtalk", "at_mobiles", request.form.get("dingtalk_at_mobiles", "").strip())
         cfg.set("dingtalk", "at_all", request.form.get("dingtalk_at_all", "").strip())
         cfg.set("dingtalk", "enabled", "true")
-        # AI
         cfg.set("ai", "api_key", request.form.get("ai_api_key", "").strip())
         cfg.set("ai", "model", request.form.get("ai_model", "deepseek-chat").strip())
         cfg.set("ai", "enabled", "true" if request.form.get("ai_enabled") else "false")
-        # general
         cfg.set("general", "brand_name", request.form.get("brand_name", "秘纤").strip())
         cfg.set("general", "report_title", request.form.get("report_title", "直播日报").strip())
         with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
             cfg.write(f)
         msg = "配置已保存，重启服务后生效。"
 
-    # 读取当前值
-    import config as cfg_mod
-    # 重新加载以便读取最新值（避免缓存）
     import importlib
-    importlib.reload(cfg_mod)
+    importlib.reload(config)
 
     def val(v):
         return html_mod.escape(v) if v else ""
@@ -458,65 +367,27 @@ def config_page():
     </div>
     {f'<div class="status ok" style="margin:8px 0">{html_mod.escape(msg)}</div>' if msg else ''}
     <form method="post">
-    <div class="card" style="padding-bottom:16px">
-      <h3>📡 飞书</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-        <div><label style="color:var(--dim);font-size:12px">App ID</label>
-          <input name="feishu_app_id" value="{val(cfg_mod.FEISHU_APP_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="cli_xxxxxxxx"></div>
-        <div><label style="color:var(--dim);font-size:12px">App Secret</label>
-          <input name="feishu_app_secret" value="{val(cfg_mod.FEISHU_APP_SECRET)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="xxxxxxxx"></div>
-        <div><label style="color:var(--dim);font-size:12px">App Token（base链接 /base/ 后面那段）</label>
-          <input name="feishu_app_token" value="{val(cfg_mod.FEISHU_APP_TOKEN)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="留空则用 wiki_node_token 解析"></div>
-        <div><label style="color:var(--dim);font-size:12px">Wiki Node Token</label>
-          <input name="feishu_wiki_node_token" value="{val(cfg_mod.FEISHU_WIKI_NODE_TOKEN)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="有 app_token 时留空"></div>
-        <div><label style="color:var(--dim);font-size:12px">跟播记录表 ID</label>
-          <input name="feishu_follow_table_id" value="{val(cfg_mod.FOLLOW_TABLE_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="tblXXXX"></div>
-        <div><label style="color:var(--dim);font-size:12px">直播数据表 ID</label>
-          <input name="feishu_data_table_id" value="{val(cfg_mod.DATA_TABLE_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="tblXXXX"></div>
-      </div>
-    </div>
-    <div class="card" style="padding-bottom:16px">
-      <h3>📣 钉钉机器人</h3>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:8px">
-        <div><label style="color:var(--dim);font-size:12px">Webhook 地址</label>
-          <input name="dingtalk_webhook" value="{val(config.DINGTALK_TARGETS[0]['webhook'] if config.DINGTALK_TARGETS else '')}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
-        <div><label style="color:var(--dim);font-size:12px">加签 Secret</label>
-          <input name="dingtalk_secret" value="{val(config.DINGTALK_TARGETS[0]['secret'] if config.DINGTALK_TARGETS else '')}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="SECxxx"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
-        <div><label style="color:var(--dim);font-size:12px">@ 手机号（逗号分隔）</label>
-          <input name="dingtalk_at_mobiles" value="{val(','.join(config.DINGTALK_TARGETS[0].get('at_mobiles',[])) if config.DINGTALK_TARGETS else '')}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="留空不@"></div>
-        <div><label style="color:var(--dim);font-size:12px">@所有人</label>
-          <select name="dingtalk_at_all" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px">
-            <option value="false" {'selected' if not (config.DINGTALK_TARGETS and config.DINGTALK_TARGETS[0].get('at_all')) else ''}>关闭</option>
-            <option value="true" {'selected' if config.DINGTALK_TARGETS and config.DINGTALK_TARGETS[0].get('at_all') else ''}>开启</option>
-          </select></div>
-      </div>
-    </div>
-    <div class="card" style="padding-bottom:16px">
-      <h3>🤖 AI 智能总结</h3>
-      <div style="display:grid;grid-template-columns:2fr 1fr 120px;gap:12px;margin-top:8px;align-items:end">
-        <div><label style="color:var(--dim);font-size:12px">DeepSeek API Key</label>
-          <input name="ai_api_key" value="{val(cfg_mod.AI_API_KEY)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="sk-xxx"></div>
-        <div><label style="color:var(--dim);font-size:12px">模型</label>
-          <input name="ai_model" value="{val(cfg_mod.AI_MODEL)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px" placeholder="deepseek-chat"></div>
-        <div style="padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:13px;cursor:pointer">
-          <input type="checkbox" name="ai_enabled" {'checked' if cfg_mod.AI_ENABLED else ''} style="accent-color:var(--amber)"> 启用</label></div>
-      </div>
-    </div>
-    <div class="card" style="padding-bottom:16px">
-      <h3>⚙️ 通用</h3>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
-        <div><label style="color:var(--dim);font-size:12px">品牌名称</label>
-          <input name="brand_name" value="{val(cfg_mod.BRAND_NAME)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;margin-top:2px" placeholder="秘纤"></div>
-        <div><label style="color:var(--dim);font-size:12px">报表标题</label>
-          <input name="report_title" value="{val(cfg_mod.REPORT_TITLE)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;margin-top:2px" placeholder="直播日报"></div>
-      </div>
-    </div>
-    <div class="bar" style="margin-top:16px">
-      <button class="btn primary" type="submit">💾 保存配置</button>
-      <span style="color:var(--dim);font-size:13px">保存后需重启服务生效</span>
-    </div>
+    <div class="card" style="padding-bottom:16px"><h3>📡 飞书</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+    <div><label style="color:var(--dim);font-size:12px">App ID</label><input name="feishu_app_id" value="{val(config.FEISHU_APP_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">App Secret</label><input name="feishu_app_secret" value="{val(config.FEISHU_APP_SECRET)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">App Token（base链接 /base/ 后面那段）</label><input name="feishu_app_token" value="{val(config.FEISHU_APP_TOKEN)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">跟播记录表 ID</label><input name="feishu_follow_table_id" value="{val(config.FOLLOW_TABLE_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">直播数据表 ID</label><input name="feishu_data_table_id" value="{val(config.DATA_TABLE_ID)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    </div></div>
+    <div class="card" style="padding-bottom:16px"><h3>📣 钉钉机器人</h3><div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;margin-top:8px">
+    <div><label style="color:var(--dim);font-size:12px">Webhook</label><input name="dingtalk_webhook" value="{val(config.DINGTALK_TARGETS[0]['webhook'] if config.DINGTALK_TARGETS else '')}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">加签 Secret</label><input name="dingtalk_secret" value="{val(config.DINGTALK_TARGETS[0]['secret'] if config.DINGTALK_TARGETS else '')}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    </div></div>
+    <div class="card" style="padding-bottom:16px"><h3>🤖 AI 智能总结</h3><div style="display:grid;grid-template-columns:2fr 1fr 100px;gap:12px;margin-top:8px;align-items:end">
+    <div><label style="color:var(--dim);font-size:12px">DeepSeek API Key</label><input name="ai_api_key" value="{val(config.AI_API_KEY)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">模型</label><input name="ai_model" value="{val(config.AI_MODEL)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;font-family:monospace;margin-top:2px"></div>
+    <div style="padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;color:var(--dim);font-size:13px;cursor:pointer"><input type="checkbox" name="ai_enabled" {'checked' if config.AI_ENABLED else ''} style="accent-color:var(--amber)"> 启用</label></div>
+    </div></div>
+    <div class="card" style="padding-bottom:16px"><h3>⚙️ 通用</h3><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px">
+    <div><label style="color:var(--dim);font-size:12px">品牌名称</label><input name="brand_name" value="{val(config.BRAND_NAME)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;margin-top:2px"></div>
+    <div><label style="color:var(--dim);font-size:12px">报表标题</label><input name="report_title" value="{val(config.REPORT_TITLE)}" style="width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font-size:14px;margin-top:2px"></div>
+    </div></div>
+    <div class="bar" style="margin-top:16px"><button class="btn primary" type="submit">💾 保存配置</button><span style="color:var(--dim);font-size:13px">保存后需重启服务生效</span></div>
     </form>
     """
     return page("config", body)
@@ -535,20 +406,17 @@ def settings():
     body = f"""
     <div style="margin-top:18px">{note}</div>
     {saved}
-    <p class="hint">这里就是「换机器人 / 换群 / 改密钥」的唯一入口。直接编辑下面的 settings.ini，保存后重启服务生效。
-    想加群就复制一段 <code>[dingtalk_2]</code>；想停用某群把它的 <code>enabled</code> 改成 <code>false</code>。</p>
+    <p class="hint">直接编辑 settings.ini 原始内容</p>
     <form method="post">
       <textarea name="content" spellcheck="false">{html_mod.escape(content)}</textarea>
-      <div class="bar"><button class="btn primary" type="submit">保存 settings.ini</button></div>
+      <div class="bar"><button class="btn primary" type="submit">保存</button></div>
     </form>
     """
     return page("settings", body)
 
 
 if __name__ == "__main__":
-    import socket
-    import subprocess
-
+    import socket, subprocess
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=5001)
@@ -559,49 +427,16 @@ if __name__ == "__main__":
     result = sock.connect_ex(("127.0.0.1", a.port))
     sock.close()
     if result == 0:
-        # 端口已被占用，查出是谁
         try:
-            out = subprocess.check_output(
-                ["lsof", "-i", f":{a.port}", "-P", "-n"],
-                stderr=subprocess.STDOUT, timeout=5
-            ).decode()
+            out = subprocess.check_output(["lsof", "-i", f":{a.port}", "-P", "-n"], stderr=subprocess.STDOUT, timeout=5).decode()
             lines = out.strip().split("\n")
             if len(lines) > 1:
                 parts = lines[1].split()
-                proc_name = parts[0] if parts else "未知"
-                pid = parts[1] if len(parts) > 1 else "?"
-                # 尝试找进程的工作目录
-                try:
-                    cwd = subprocess.check_output(
-                        ["lsof", "-p", pid, "-Fn"], stderr=subprocess.DEVNULL, timeout=3
-                    ).decode()
-                    for line in cwd.split("\n"):
-                        if line.startswith("n") and "/" in line:
-                            # 找项目名
-                            path = line[1:]
-                            if "/" in path:
-                                parts_dir = path.split("/")
-                                for i, p in enumerate(parts_dir):
-                                    if p and p not in ("", "Users", "tiexue", "Desktop"):
-                                        project = p
-                                        break
-                                else:
-                                    project = path.split("/")[-2] if len(path.split("/")) > 1 else path
-                                break
-                    else:
-                        project = "未知项目"
-                except Exception:
-                    project = "未知项目"
-
-                print(f"\n⚠️  端口 {a.port} 已被占用！")
-                print(f"   占用进程：{proc_name}（PID {pid}）")
-                print(f"   项目目录：~/{project}/")
-                print(f"\n   解决方法：")
-                print(f"   1. 停掉那个项目，再启动本服务")
-                print(f"   2. 或者换端口：python web.py --port {a.port + 1}")
-                print()
+                proc, pid = (parts[0], parts[1]) if len(parts) > 1 else ("?", "?")
+                print(f"\n⚠️  端口 {a.port} 已被占用：{proc}（PID {pid}）")
+                print(f"   换端口：python web.py --port {a.port + 1}\n")
         except Exception:
-            print(f"\n⚠️  端口 {a.port} 已被其他服务占用，请换端口：python web.py --port {a.port + 1}\n")
+            print(f"\n⚠️  端口 {a.port} 已被占用，请换端口：python web.py --port {a.port + 1}\n")
 
     print(f"控制台已启动： http://{a.host}:{a.port}")
     app.run(host=a.host, port=a.port, debug=False)

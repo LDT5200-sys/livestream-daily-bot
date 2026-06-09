@@ -472,6 +472,55 @@ def compute_weekly_analytics(start_date, end_date, follow_rows, data_rows):
     }
 
 
+# ---------- 月历数据 ----------
+def build_monthly_calendar(year, month, follow_rows, data_rows):
+    """返回整月每天的摘要数据，供月历视图使用。"""
+    import calendar
+    tz = timezone(timedelta(hours=8))
+    # 当月所有日期
+    num_days = calendar.monthrange(year, month)[1]
+    days = []
+    for d in range(1, num_days + 1):
+        date_str = f"{year}-{month:02d}-{d:02d}"
+        dd = _extract_daily(date_str, follow_rows, data_rows, tz)
+        # 提取告警标记
+        has_alert = bool(dd["events"].get("异常") or dd["events"].get("主播"))
+        # 提取关键标签
+        tags = []
+        if dd["events"].get("异常"):
+            tags.append("⚠️")
+        if dd["events"].get("主播"):
+            tags.append("🎤")
+        if dd["events"].get("系数"):
+            tags.append("🔧")
+        if dd["events"].get("加量"):
+            tags.append("⏫")
+        highlight = ""
+        for key in ["异常", "主播", "系数", "加量", "素材"]:
+            if dd["events"].get(key):
+                highlight = dd["events"][key][0][:60]
+                break
+        days.append({
+            "date": date_str,
+            "weekday": dd["weekday"],
+            "day": d,
+            "gmv": dd["gmv_total"],
+            "roi": dd["avg_roi"],
+            "has_alert": has_alert,
+            "tags": tags[:3],  # 最多 3 个标签
+            "highlight": highlight,
+            "has_data": len([s for s in dd["slots"] if dd["slot_gmv"].get(s, 0) > 0]) > 0,
+        })
+    # 本月第一天是周几（0=周一，6=周日）
+    first_wd = datetime(year, month, 1).weekday()
+    return {
+        "year": year,
+        "month": month,
+        "first_weekday": first_wd,
+        "days": days,
+    }
+
+
 # ---------- 共用：事件板块 ----------
 _ICON = {"系数": "🔧 系数调整", "素材": "🎬 素材动作", "投放": "📈 投放/成本",
          "加量": "⏫ 加量/控量", "异常": "⚠️ 异常 & 风险", "主播": "🎤 主播状态",
