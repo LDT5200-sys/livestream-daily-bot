@@ -148,3 +148,69 @@ def summarize_weekly(start_date, end_date, daily_list, merged_events, api_key, m
         return _call_deepseek(prompt, api_key, model, 800)
     except Exception as e:
         return f"（AI 周报总结生成失败：{e}）"
+
+
+def summarize_calendar_cells(daily_list, api_key, model="deepseek-chat"):
+    """为月历每天生成一句话总结（≤12字），返回 {date: summary} 字典。
+       无数据/无事件的日子跳过，用原 highlight 兜底。"""
+    if not api_key or not daily_list:
+        return {}
+
+    # 只处理有数据且有事可说的日子
+    active_days = []
+    for dd in daily_list:
+        if dd["gmv_total"] <= 0:
+            continue
+        # 收集当日事件
+        ev_lines = []
+        for cat in ["异常", "主播", "系数", "素材", "加量", "投放"]:
+            for e in dd["events"].get(cat, []):
+                ev_lines.append(e)
+        if not ev_lines:
+            continue
+        active_days.append((dd["date"], dd["weekday"], dd["gmv_total"],
+                           dd["avg_roi"], ev_lines))
+
+    if not active_days:
+        return {}
+
+    # 构建批量提示
+    lines = []
+    for date_str, wd, gmv, roi, evs in active_days:
+        roi_s = f"，ROI {roi:.2f}" if roi else ""
+        lines.append(f"{date_str}（{wd}）GMV ¥{gmv:,.0f}{roi_s}")
+        for e in evs[:3]:
+            lines.append(f"  - {e[:80]}")
+    context = "\n".join(lines)
+
+    prompt = f"""以下是直播运营每天的记录。为每一天写一句≤12字的中文总结，说明当天效率高低及原因。
+
+格式：日期：一句话总结
+例如：
+06-01：主播体力不支效率低
+06-02：身体不适思路不清
+06-04：D班系数调整效果佳
+06-05：运营平稳无异常
+
+当天数据：
+{context}
+
+请为以上每一天输出一行，格式严格为"MM-DD：一句话总结"。"""
+
+    try:
+        result = _call_deepseek(prompt, api_key, model, 600)
+        # 解析结果
+        summary_map = {}
+        for line in result.split("\n"):
+            line = line.strip()
+            if "：" in line and "-" in line[:8]:
+                parts = line.split("：", 1)
+                key = parts[0].strip()
+                val = parts[1].strip() if len(parts) > 1 else ""
+                # 转为完整日期格式
+                if len(key) == 5:  # MM-DD
+                    full_date = f"2026-{key}"
+                    summary_map[full_date] = val[:16]  # 最多 16 字
+        return summary_map
+    except Exception:
+        return {}

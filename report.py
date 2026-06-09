@@ -477,15 +477,12 @@ def build_monthly_calendar(year, month, follow_rows, data_rows):
     """返回整月每天的摘要数据，供月历视图使用。"""
     import calendar
     tz = timezone(timedelta(hours=8))
-    # 当月所有日期
     num_days = calendar.monthrange(year, month)[1]
     days = []
     for d in range(1, num_days + 1):
         date_str = f"{year}-{month:02d}-{d:02d}"
         dd = _extract_daily(date_str, follow_rows, data_rows, tz)
-        # 提取告警标记
         has_alert = bool(dd["events"].get("异常") or dd["events"].get("主播"))
-        # 提取关键标签
         tags = []
         if dd["events"].get("异常"):
             tags.append("⚠️")
@@ -507,11 +504,24 @@ def build_monthly_calendar(year, month, follow_rows, data_rows):
             "gmv": dd["gmv_total"],
             "roi": dd["avg_roi"],
             "has_alert": has_alert,
-            "tags": tags[:3],  # 最多 3 个标签
+            "tags": tags[:3],
             "highlight": highlight,
             "has_data": len([s for s in dd["slots"] if dd["slot_gmv"].get(s, 0) > 0]) > 0,
         })
-    # 本月第一天是周几（0=周一，6=周日）
+
+    # AI 总结日历格子（用原始 extract 数据，含完整 events）
+    if config.AI_ENABLED:
+        try:
+            from ai_summarize import summarize_calendar_cells
+            daily_data = [_extract_daily(d["date"], follow_rows, data_rows, tz) for d in days]
+            ai_summaries = summarize_calendar_cells(daily_data, config.AI_API_KEY, config.AI_MODEL)
+            for dd in days:
+                if dd["date"] in ai_summaries and ai_summaries[dd["date"]]:
+                    dd["highlight"] = ai_summaries[dd["date"]]
+                    dd["ai_summary"] = True
+        except Exception:
+            pass
+
     first_wd = datetime(year, month, 1).weekday()
     return {
         "year": year,
