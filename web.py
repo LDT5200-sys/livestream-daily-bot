@@ -219,7 +219,7 @@ def home():
           var gmvTxt=d.gmv>0?'¥'+fmt(d.gmv):'—';
           var tags=d.tags?d.tags.join(' '):'';
           var note=d.highlight?d.highlight.substring(0,28):'';
-          cells.push('<div class="'+cls.join(' ')+'" onclick="openDay(\''+d.date+'\')">'
+          cells.push('<div class="'+cls.join(' ')+'" data-date="'+d.date+'">'
             +'<div class="cal-num">'+d.day+'</div>'
             +'<div class="'+gmvCls+'">'+gmvTxt+'</div>'
             +'<div class="cal-tags">'+tags+'</div>'
@@ -227,6 +227,10 @@ def home():
             +'</div>');
         }});
         calDiv.innerHTML=cells.join('');
+        // 事件委托：点格子打开日报
+        Array.from(calDiv.querySelectorAll('.cal-cell[data-date]')).forEach(function(el){{
+          el.addEventListener('click',function(){{openDay(this.getAttribute('data-date'));}});
+        }});
       }}catch(e){{setSt(''+e,'err');}}
     }}
 
@@ -237,7 +241,8 @@ def home():
         var r=await fetch('/api/report?date='+date);var j=await r.json();
         if(!j.ok){{setSt(j.error,'err');return;}}
         detail.style.display='block';
-        detail.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">'+j.title+'</h2><button class="btn" style="font-size:12px" onclick="detail.style.display=\\'none\\';selDate=null;loadMonth()">✕ 关闭</button></div>'+j.html;
+        detail.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">'+j.title+'</h2><button class="btn" id="closeDetail" style="font-size:12px">✕ 关闭</button></div>'+j.html;
+        document.getElementById('closeDetail').addEventListener('click',function(){{detail.style.display='none';selDate=null;loadMonth();}});
         detail.scrollIntoView({{behavior:'smooth'}});
         setSt('已加载 '+date,'ok');
         loadMonth();
