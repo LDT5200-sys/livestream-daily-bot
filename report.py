@@ -352,31 +352,37 @@ def build_weekly_report(start_date, end_date, follow_rows, data_rows):
     if not any_ev:
         L.append("- 各场次运营动作平稳，无重点异常。")
 
-    # ---- 每日速览（紧凑表格）----
+    # ---- 每日日历（横向周视图）----
     L.append("")
-    L.append("**三、每日速览**")
+    L.append("**三、本周日历**")
     L.append("")
-    L.append("| 日期 | GMV | ROI | 要点 |")
-    L.append("|------|----:|----:|------|")
+    # 表头：周一到周日
+    wkdays = [dd["weekday"] for dd in daily_list]
+    dates_short = [dd["date"][-5:] for dd in daily_list]  # MM-DD
+    L.append("| " + " | ".join(f"**{w}**<br>{d}" for w, d in zip(wkdays, dates_short)) + " |")
+    L.append("|" + "|".join(["------"] * len(daily_list)) + "|")
+    # GMV + ROI 行
+    gmv_row = []
+    for dd in daily_list:
+        if dd['gmv_total'] > 0:
+            roi_s = f"ROI {dd['avg_roi']:.2f}" if dd['avg_roi'] else ""
+            gmv_row.append(f"¥{dd['gmv_total']:,.0f}<br>{roi_s}")
+        else:
+            gmv_row.append("—")
+    L.append("| " + " | ".join(gmv_row) + " |")
+    # 要点行
+    note_row = []
     for dd in daily_list:
         if dd['gmv_total'] == 0:
-            L.append(f"| {dd['date']}（{dd['weekday']}） | — | — | 数据未录入 |")
+            note_row.append("待录入")
             continue
-        # 提取当日最关键的一句话
-        highlight = ""
-        for key in ["异常", "主播"]:
+        hl = ""
+        for key in ["异常", "主播", "系数", "加量", "素材"]:
             if dd['events'].get(key):
-                highlight = dd['events'][key][0][:50]
+                hl = dd['events'][key][0][:40]
                 break
-        if not highlight:
-            for key in ["系数", "素材", "加量", "投放"]:
-                if dd['events'].get(key):
-                    highlight = dd['events'][key][0][:50]
-                    break
-        if not highlight:
-            highlight = "运营平稳"
-        roi_str = f"{dd['avg_roi']:.2f}" if dd['avg_roi'] else "—"
-        L.append(f"| {dd['date']}（{dd['weekday']}） | ¥{dd['gmv_total']:,.0f} | {roi_str} | {highlight} |")
+        note_row.append(hl or "平稳")
+    L.append("| " + " | ".join(note_row) + " |")
 
     _append_footer(L)
 

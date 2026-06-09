@@ -150,6 +150,18 @@ button{cursor:pointer;border:none;border-radius:10px;padding:10px 18px;font-size
 .summary-tbl .muted{color:var(--dim)}
 @media(max-width:700px){.summary-section{grid-template-columns:1fr}}
 
+/* ---- 日历 ---- */
+.day-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center}
+.day-card.today{border-color:var(--amber);box-shadow:0 0 12px -4px rgba(245,166,35,0.15)}
+.day-card.has-alert{background:rgba(192,57,43,0.1);border-color:rgba(192,57,43,0.3)}
+.day-card .day-date{font-size:11px;color:var(--dim)}
+.day-card .day-wd{font-size:12px;font-weight:500;margin:2px 0}
+.day-card .day-gmv{font-size:15px;font-weight:700;margin:4px 0;font-variant-numeric:tabular-nums}
+.day-card .day-gmv.muted{color:var(--dim);font-weight:400;font-size:13px}
+.day-card .day-roi{font-size:11px;color:var(--ok)}
+.day-card .day-note{font-size:10px;color:var(--dim);margin-top:4px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.day-card .day-alert{display:inline-block;font-size:9px;padding:1px 5px;border-radius:4px;background:var(--bad);color:#fff;margin-top:3px}
+
 /* ---- 随页面隐藏/显示 ---- */
 .week-only,.day-only{display:none}
 
@@ -201,10 +213,15 @@ def home():
       <div id="alert-list"></div>
     </div>
 
-    <!-- 趋势图 + 汇总表 -->
+    <!-- 趋势图 + 日历 + 汇总表 -->
     <div id="analytics" style="display:none">
+      <!-- 日历周视图 -->
+      <div class="card" style="padding-bottom:12px">
+        <h2 style="margin-bottom:12px">📅 本周日历</h2>
+        <div id="calendar" style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px"></div>
+      </div>
       <div class="card" style="padding-bottom:16px">
-        <h2 style="margin-bottom:2px">📈 近 7 天 GMV / ROI 趋势</h2>
+        <h2 style="margin-bottom:2px">📈 GMV / ROI 趋势</h2>
         <div class="chart-wrap">
           <div id="chart" class="chart-bars"></div>
         </div>
@@ -238,6 +255,28 @@ def home():
     }}
 
     // ---- 趋势图 ----
+    // ---- 日历 ----
+    function renderCalendar(trends){{
+      var today='{today_str()}';
+      var calDiv=document.getElementById('calendar');
+      calDiv.innerHTML=trends.map(function(t){{
+        var isToday=t.date==today;
+        var hasAlert=false;
+        var classes=['day-card'];
+        if(isToday) classes.push('today');
+        if(hasAlert) classes.push('has-alert');
+        var gmvCls=t.gmv>0?'day-gmv':'day-gmv muted';
+        var gmvTxt=t.gmv>0?'¥'+fmt(t.gmv).substring(0,7):'—';
+        var roiTxt=t.roi!=null?'ROI '+t.roi.toFixed(2):'';
+        return '<div class="'+classes.join(' ')+'">'
+          +'<div class="day-wd">'+t.weekday+'</div>'
+          +'<div class="day-date">'+t.date.substring(5)+'</div>'
+          +'<div class="'+gmvCls+'">'+gmvTxt+'</div>'
+          +(roiTxt?'<div class="day-roi">'+roiTxt+'</div>':'')
+          +'</div>';
+      }}).join('');
+    }}
+
     function renderChart(trends){{
       var maxGmv=Math.max.apply(null,trends.map(function(t){{return t.gmv;}}))||1;
       chartDiv.innerHTML=trends.map(function(t){{
@@ -276,6 +315,7 @@ def home():
         if(isWeek){{
           var a=await fetch('/api/analytics?date='+d);var aj=await a.json();
           if(aj.ok){{
+            renderCalendar(aj.trends);
             renderChart(aj.trends);
             renderSummary(aj.operator_summary,aj.anchor_summary);
             renderAlerts(aj.alerts);
